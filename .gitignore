@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.idea/
+/outputs/
+/output/
+/runs/
+/weights/*.pth
+/weights/*.pt
+/weights/*.onnx
+/data/

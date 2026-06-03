@@ -1,0 +1,237 @@
+# by xueqianyue
+height: &height 1024
+width: &width 1024
+num_classes: 7
+
+device: "cuda:0"
+remap_mscoco_category: True
+query_num: &query_num 100
+output_dir: ./output/unirsnet
+log_step: 10
+checkpoint_step: 10
+
+output:
+  path: ./results/
+
+epoches: 100
+
+train_debug: False
+train_debug_steps: 1
+train_dataloader:
+  type: DataLoader
+  dataset:
+    return_masks: False
+    type: CocoDetection_XQY
+    img_folder: ./data/train2017/
+    ann_file: ./data/annotations/instances_train2017.json
+    transforms:
+      type: Compose_XQY
+      ops:
+
+        - { type: RandomZoomOut, fill: 0 }
+        - { type: RandomIoUCrop, p: 0.8 }
+        - { type: SanitizeBoundingBox, min_size: 1 }
+        - { type: RandomHorizontalFlip }
+        - { type: Resize, size: [*height, *width] }
+
+        - { type: ToImageTensor }
+        - { type: ConvertDtype }
+        - { type: SanitizeBoundingBox, min_size: 1 }
+        - { type: ConvertBox, out_fmt: 'cxcywh', normalize: True }
+  batch_sampler:
+    type: SigBatchSampler
+    batch_size: 8
+    drop_last: True
+    shuffle: True
+    same_video: True
+    seed: 42
+    head_random: True
+    head_n: 4
+    log_file: ./output/batch_trace_rank{rank}.jsonl
+
+  num_workers: 0
+
+  collate_fn: default_collate_fn
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetection_XQY
+    img_folder: ./data/val2017/
+    ann_file: ./data/annotations/instances_val2017.json
+    transforms:
+      type: Compose_XQY
+      ops:
+
+        - {type: Resize, size: [*height, *width]}
+        - {type: ToImageTensor}
+        - {type: ConvertDtype}
+  batch_sampler:
+    type: SigBatchSampler
+    batch_size: 8
+    drop_last: True
+    shuffle: True
+    same_video: True
+    seed: 42
+    head_random: True
+    head_n: 4
+    log_file: ./output/batch_trace_rank{rank}.jsonl
+
+  num_workers: 0
+
+  collate_fn: default_collate_fn
+
+dataset_configs:
+  GG_4:
+    Data_name: GG_4_0619
+    path: ./dataset/GG_4/
+    data_parameter:
+      fs: 25e6
+
+  GF_3_0701:
+    Data_name: GF_3_0701
+    data_parameter:
+      Na : 25500
+      Nr : 25088
+      fs : 133.333333e6
+    path : ./dataset/GF_3/
+    file_path: ./dataset/GF_3/HH_echo_W25088_H25500_0701_011.dat
+
+  GF_3_0712:
+    Data_name: GF_3_0712
+    data_parameter:
+      Na : 23348
+      Nr : 18944
+      fs : 66.666667
+    path : ./dataset/GF_3/
+    file_path: ./dataset/GF_3/HH_echo_W18944_H23348.dat
+
+sync_bn: True
+find_unused_parameters: True
+use_amp: False
+scaler:
+  type: GradScaler
+  enabled: True
+
+use_ema: True
+
+ema:
+  type: ModelEMA
+  decay: 0.9999
+  warmups: 2000
+
+clip_max_norm: 0.1
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: 'backbone'
+      lr: 0.00001
+    -
+      params: '^(?=.*encoder(?=.*bias|.*norm.*weight)).*$'
+      weight_decay: 0.
+    -
+      params: '^(?=.*decoder(?=.*bias|.*norm.*weight)).*$'
+      weight_decay: 0.
+
+  lr: 0.0001
+  betas: [0.9, 0.999]
+  weight_decay: 0.0001
+
+lr_scheduler:
+  type: MultiStepLR
+  milestones: [30, 60, 90]
+  gamma: 0.5
+
+task: detection
+model: RTDETR
+criterion: SetCriterion_XQY
+postprocessor: RTDETRPostProcessor_XQY
+
+RTDETR:
+  backbone: PResNet
+  encoder: HybridEncoder
+  decoder: RTDETRTransformer_XQY
+  multi_scale: [864,896, 928, 960, 992, 1024, 1024, 1024, 1056,1088,1120, 1152, 1184]
+
+PResNet:
+  depth: 50
+  variant: d
+  freeze_at: 0
+  return_idx: [1, 2, 3]
+  num_stages: 4
+  freeze_norm: True
+  pretrained: True
+  in_channels: 3
+
+HybridEncoder:
+  in_channels: [512, 1024, 2048]
+  feat_strides: [8, 16, 32]
+
+  hidden_dim: 256
+  use_encoder_idx: [2]
+  num_encoder_layers: 1
+  nhead: 8
+  dim_feedforward: 1024
+  dropout: 0.
+  enc_act: 'gelu'
+  pe_temperature: 10000
+
+  expansion: 1.0
+  depth_mult: 1
+  act: 'silu'
+
+  eval_spatial_size: [*height, *width]
+
+RTDETRTransformer_XQY:
+  feat_channels: [256, 256, 256]
+  feat_strides: [8, 16, 32]
+  hidden_dim: 256
+  num_levels: 3
+
+  num_queries: *query_num
+
+  num_decoder_layers: 6
+  num_denoising: *query_num
+
+  eval_idx: -1
+  eval_spatial_size: [*height, *width]
+  train_debug: false
+  train_debug_steps: 3
+
+use_focal_loss: True
+
+RTDETRPostProcessor_XQY:
+  num_top_queries: *query_num
+  debug: false
+  debug_steps: 2
+
+SetCriterion_XQY:
+  weight_dict: {loss_vfl: 2, loss_bbox: 5, loss_giou: 2, loss_emb: 0.25, loss_band: 0.25}
+
+  losses: ['vfl', 'boxes', 'emb', 'band']
+
+  alpha: 0.75
+  gamma: 2.0
+
+  emb_tau: 0.07
+  min_pos: 1
+  emb_mem_enable: true
+  emb_mem_size: 32
+  emb_mem_neg: 256
+
+  band_use_logh: true
+  band_eps: 1.0e-6
+  band_min_group: 2
+  band_proto_enable: true
+  band_proto_m: 0.9
+  band_within_w: 1.0
+  band_proto_w: 1.0
+
+  matcher:
+    type: HungarianMatcher
+    weight_dict: {cost_class: 2, cost_bbox: 5, cost_giou: 2}
+
+    alpha: 0.25
+    gamma: 2.0
