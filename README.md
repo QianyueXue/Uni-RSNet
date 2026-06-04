@@ -5,6 +5,10 @@ the core Uni-RSNet model, CHR-Bin sampler, SCCO loss, GCC loss, one training
 entry, and one final inference entry. Experimental inference scripts and data
 conversion scripts are intentionally removed.
 
+# Data
+The data used in the paper can be extracted from Baidu Cloud: https://pan.baidu.com/s/13aH0Mjf2Y7aZY3Xv2NIKRw?pwd=zymx
+Extraction code：zymx 
+
 ## Paper-Aligned Defaults
 
 - Classes: 7 (`lfm`, `sfm`, `bpsk`, `fsk`, `costas`, `qpfm`, `nlfm`)
